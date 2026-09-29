@@ -8,10 +8,10 @@ const statusEl = $('status'), sendBtn = $('send-btn'), recvBtn = $('recv-btn'),
   offerBox = $('offer'), offerText = $('offer-text'), acceptBtn = $('accept-btn'),
   rejectBtn = $('reject-btn'), cancelTransferBtn = $('cancel-transfer-btn');
 
-const CHUNK = 16 * 1024;             
+const CHUNK = 16 * 1024;              
 const MAX_BYTES = 500 * 1024 * 1024;  
 const MAX_FILES = 50;
-const HIGH_WATER = 4 * 1024 * 1024;   
+const HIGH_WATER = 4 * 1024 * 1024;  
 const CONNECT_TIMEOUT_MS = 15000;
 
 const MESSAGES = {
@@ -27,7 +27,7 @@ const SERVER_DOWN = "Can't reach the pairing server. Check your internet connect
 const OFFLINE = "You appear to be offline. Connect to Wi-Fi, then try again.";
 const LINK_FAILED = "Couldn't connect directly to the other laptop. Both must be on the same Wi-Fi network. Guest and public networks often block device-to-device traffic.";
 
-let ws = null, state = 'idle';         
+let ws = null, state = 'idle';          
 let role = null, pc = null, dc = null, connectTimer = null;
 let signalQueue = Promise.resolve();
 let sending = false, incoming = null, downloadUrls = [];
@@ -36,10 +36,16 @@ let lastAction = 'send';
 let offer = null, cancelledBy = null, replyResolver = null, replyTimer = null;
 const REPLY_TIMEOUT_MS = 60000;
 
+let statusTimer = null;
+function hideStatus() { clearTimeout(statusTimer); statusEl.classList.add('hide'); }
+
 function setStatus(msg, isError = false) {
+  clearTimeout(statusTimer);
+  statusEl.classList.remove('hide');
   statusEl.textContent = msg;
   statusEl.classList.toggle('error', isError);
   statusEl.classList.remove('pop'); void statusEl.offsetWidth; statusEl.classList.add('pop'); 
+  if (!isError) statusTimer = setTimeout(hideStatus, 8000); 
   statusEl.setAttribute('aria-live', isError ? 'assertive' : 'polite');
 }
 const fmtSize = (n) => n < 1024 * 1024 ? `${Math.max(1, Math.round(n / 1024))} KB` : `${(n / 1048576).toFixed(1)} MB`;
@@ -99,7 +105,7 @@ async function open(firstMessage) {
   ws.onmessage = (e) => { let m; try { m = JSON.parse(e.data); } catch { return; } handle(m); };
   ws.onclose = () => {
     if (state === 'idle') return;
-    if (dc && dc.readyState === 'open') return; 
+    if (dc && dc.readyState === 'open') return;
     reset('Lost the connection to the pairing server. Start again.', true);
   };
   ws.send(JSON.stringify(firstMessage));
@@ -178,7 +184,7 @@ async function onSignal(data) {
       sendSignal({ sdp: pc.localDescription });
     }
   } else if (data.candidate) {
-    try { await pc.addIceCandidate(data.candidate); } catch {  }
+    try { await pc.addIceCandidate(data.candidate); } catch { }
   }
 }
 
@@ -353,7 +359,7 @@ async function sendFile() {
 
 function onOffer(m) {
   if (role !== 'receiver') return;
-  if (incoming || offer) return safeSend({ type: 'reject' }); // already busy
+  if (incoming || offer) return safeSend({ type: 'reject' });
   const files = (Array.isArray(m.files) ? m.files : []).map((f) => ({
     name: String((f && f.name) || 'file').slice(0, 255),
     size: Number(f && f.size),
@@ -503,7 +509,10 @@ document.addEventListener('keydown', (e) => {
   if (state === 'waiting') cancel();
   else if (offer) rejectBtn.click();
   else if (sending || incoming) cancelTransfer();
+  else hideStatus(); 
 });
+statusEl.title = 'Click to dismiss (or press Esc)';
+statusEl.addEventListener('click', hideStatus);
 
 acceptBtn.addEventListener('click', () => {
   if (!offer) return;
