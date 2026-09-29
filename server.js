@@ -1,8 +1,9 @@
 // DropLink server. Step 1: serves the static page and a health check.
-// Step 2 will add the WebSocket pairing (it only relays handshakes, never files).
+// Pairing over WebSocket lives in pairing.js (it only relays handshakes, never files).
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
+const { attachPairing } = require('./pairing');
 
 const PORT = process.env.PORT || 3000;
 const PUBLIC_DIR = path.join(__dirname, 'public');
@@ -44,5 +45,7 @@ const server = http.createServer((req, res) => {
     res.end(data);
   });
 });
+
+attachPairing(server);
 
 server.listen(PORT, () => console.log(`DropLink running at http://localhost:${PORT}`));
