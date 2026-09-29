@@ -1,0 +1,11 @@
+{
+  "name": "droplink",
+  "version": "0.1.0",
+  "description": "Send files and code folders between two laptops on the same Wi-Fi, straight from the browser.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": { "node": ">=18" },
+  "license": "MIT"
+}
