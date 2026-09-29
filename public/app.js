@@ -32,6 +32,7 @@ let ws = null, state = 'idle';            // idle | waiting | joining | paired
 let role = null, pc = null, dc = null, connectTimer = null;
 let signalQueue = Promise.resolve();
 let sending = false, incoming = null, downloadUrl = null;
+let lastAction = 'send'; // which control the user last used, so focus can return to it
 let offer = null, cancelledBy = null, replyResolver = null, replyTimer = null;
 const REPLY_TIMEOUT_MS = 60000;
 
@@ -73,6 +74,11 @@ function reset(msg, isError) {
   closeRtc();
   setState('idle');
   setStatus(msg, isError);
+  // Keep keyboard users oriented: if focus was on something that just got hidden or disabled, move it.
+  const a = document.activeElement;
+  if (!a || a === document.body || a.disabled || a.offsetParent === null) {
+    (lastAction === 'join' ? codeInput : sendBtn).focus();
+  }
 }
 
 // ---------- pairing (WebSocket) ----------
@@ -105,6 +111,7 @@ function handle(msg) {
   switch (msg.type) {
     case 'created':
       codeOut.textContent = msg.code;
+      codeOut.setAttribute('aria-label', `Pairing code ${msg.code.split('').join(' ')}`);
       $('ttl').textContent = Math.round(msg.ttlMs / 60000);
       setState('waiting');
       setStatus(`Your code is ${msg.code.split('').join(' ')}. Waiting for the other laptop.`);
@@ -116,6 +123,7 @@ function handle(msg) {
       sendPanel.hidden = role !== 'sender';
       recvPanel.hidden = role !== 'receiver';
       setStatus('Paired. Setting up a direct connection...');
+      $('transfer-h').focus();
       startRtc();
       break;
     case 'signal':
@@ -355,6 +363,7 @@ function onData(e) {
 // ---------- controls ----------
 sendBtn.addEventListener('click', () => {
   if (state !== 'idle') return; // ignore double clicks
+  lastAction = 'send';
   setState('waiting'); codeBox.hidden = true;
   setStatus('Getting a code...');
   open({ type: 'create' });
@@ -364,6 +373,7 @@ function join() {
   if (state !== 'idle') return;
   const code = codeInput.value.trim();
   if (!/^\d{6}$/.test(code)) { setStatus(MESSAGES['bad-code'], true); codeInput.focus(); return; }
+  lastAction = 'join';
   setState('joining');
   setStatus('Connecting...');
   open({ type: 'join', code });

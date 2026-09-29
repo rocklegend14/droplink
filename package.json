@@ -5,13 +5,10 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "test": "node test-pairing.js"
+    "test": "node test-pairing.js",
+    "test:html": "node test-html.js"
   },
-  "dependencies": {
-    "ws": "^8.22.0"
-  },
-  "engines": {
-    "node": ">=18"
-  },
+  "dependencies": { "ws": "^8.18.0" },
+  "engines": { "node": ">=18" },
   "license": "MIT"
 }

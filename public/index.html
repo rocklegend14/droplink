@@ -15,14 +15,16 @@
   </header>
 
   <main id="main">
+    <p id="status" role="status" aria-live="polite">Not connected.</p>
+
     <section aria-labelledby="send-h">
       <h2 id="send-h">Send</h2>
       <p>Get a code, then enter it on the other laptop.</p>
       <button type="button" id="send-btn">Get pairing code</button>
       <div id="code-box" hidden>
         <p>Your code (valid for <span id="ttl">5</span> minutes):</p>
-        <output id="code-out" class="code" tabindex="-1"></output>
-        <button type="button" id="cancel-btn" class="secondary">Cancel</button>
+        <output id="code-out" class="code" tabindex="-1" aria-label="Pairing code"></output>
+        <button type="button" id="cancel-btn" class="secondary" aria-keyshortcuts="Escape">Cancel (Esc)</button>
       </div>
     </section>
 
@@ -34,7 +36,7 @@
     </section>
 
     <section id="transfer" aria-labelledby="transfer-h" hidden>
-      <h2 id="transfer-h">Transfer</h2>
+      <h2 id="transfer-h" tabindex="-1">Transfer</h2>
       <div id="send-panel" hidden>
         <label for="file-input">Choose a file to send (up to 500 MB)</label>
         <input type="file" id="file-input" class="file">
@@ -44,15 +46,14 @@
       <div id="offer" hidden>
         <p id="offer-text"></p>
         <button type="button" id="accept-btn">Accept</button>
-        <button type="button" id="reject-btn" class="secondary">Reject</button>
+        <button type="button" id="reject-btn" class="secondary" aria-keyshortcuts="Escape">Reject (Esc)</button>
       </div>
       <progress id="progress" max="100" value="0" hidden aria-label="Transfer progress"></progress>
       <p><a id="download" hidden></a></p>
-      <button type="button" id="cancel-transfer-btn" class="secondary" hidden>Cancel transfer</button>
+      <button type="button" id="cancel-transfer-btn" class="secondary" aria-keyshortcuts="Escape" hidden>Cancel transfer (Esc)</button>
       <button type="button" id="leave-btn" class="secondary">Disconnect</button>
     </section>
 
-    <p id="status" role="status" aria-live="polite">Not connected.</p>
   </main>
 
   <script src="app.js"></script>

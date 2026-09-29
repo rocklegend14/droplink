@@ -34,7 +34,7 @@ _(Update as features land.)_
 - [x] Send one file directly between browsers (WebRTC, 500 MB limit, kept in memory while receiving)
 - [x] Progress bar, cancel from either side, retry ("Try again"), receiver accepts or rejects
 - [x] Clear failure messages (each says what happened and what to do)
-- [ ] Full keyboard use
+- [x] Full keyboard use
 - [ ] Multiple files
 - [ ] Folder transfer (zipped, skipping `node_modules`, `.git`)
 
@@ -43,11 +43,18 @@ _(Update as features land.)_
 2. The server relays only the WebRTC handshake. The browsers then open a direct data channel with no STUN or TURN servers, so it only connects on the same local network.
 3. The file is cut into 16 KB chunks, sent with backpressure, and reassembled on the receiver, which checks the size before offering the download.
 
-## Keyboard shortcuts
-- Enter in the code box: connect
-- Escape: cancel a waiting code, reject an incoming file, or cancel a running transfer
-- Tab / Shift+Tab: move between controls; Enter or Space presses a button
-_(Full keyboard pass comes in step 6.)_
+## Keyboard use
+The whole flow works without a mouse.
+
+| Key | Action |
+|---|---|
+| Tab / Shift+Tab | Move between controls in reading order |
+| Enter in the code box | Connect |
+| Enter or Space on a button | Press it (Accept is focused when a file is offered) |
+| Enter or Space on the file picker | Open the file dialog |
+| Escape | Cancel a waiting code, reject an incoming file, or cancel a running transfer |
+
+Focus is moved for you at each step: to the code when one is created, to the Transfer heading when paired, to the file picker on the sender, to Accept when a file is offered, and to the download link when a file arrives. If an error hides the control you were on, focus returns to the Send button or the code box. Status and error messages are announced by screen readers, and errors are announced immediately. A skip link jumps past the header. Checked with `npm run test:html` (labels, tab order, skip link).
 
 ## Failure cases handled
 Every message says what went wrong and what to try next.
