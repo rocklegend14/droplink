@@ -32,7 +32,7 @@ _(Update as features land.)_
 - [x] Project setup, page loads, health check at `/health`
 - [x] Pairing with a 6-digit code (5-minute expiry, wrong-code limit, cancel with Escape)
 - [x] Send one file directly between browsers (WebRTC, 500 MB limit, kept in memory while receiving)
-- [ ] Progress, cancel, retry, accept/reject
+- [x] Progress bar, cancel from either side, retry ("Try again"), receiver accepts or rejects
 - [ ] Clear failure messages
 - [ ] Full keyboard use
 - [ ] Multiple files
@@ -44,7 +44,10 @@ _(Update as features land.)_
 3. The file is cut into 16 KB chunks, sent with backpressure, and reassembled on the receiver, which checks the size before offering the download.
 
 ## Keyboard shortcuts
-_(Fill in during the keyboard pass.)_
+- Enter in the code box: connect
+- Escape: cancel a waiting code, reject an incoming file, or cancel a running transfer
+- Tab / Shift+Tab: move between controls; Enter or Space presses a button
+_(Full keyboard pass comes in step 6.)_
 
 ## Failure cases handled
 _(Wrong or expired code, receiver rejects, connection drops, file too large, different networks, server unreachable, empty folder, zip out of memory, unreadable files.)_

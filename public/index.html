@@ -41,8 +41,14 @@
         <button type="button" id="send-file-btn">Send file</button>
       </div>
       <p id="recv-panel" hidden>The file will appear here when the sender starts.</p>
+      <div id="offer" hidden>
+        <p id="offer-text"></p>
+        <button type="button" id="accept-btn">Accept</button>
+        <button type="button" id="reject-btn" class="secondary">Reject</button>
+      </div>
       <progress id="progress" max="100" value="0" hidden aria-label="Transfer progress"></progress>
       <p><a id="download" hidden></a></p>
+      <button type="button" id="cancel-transfer-btn" class="secondary" hidden>Cancel transfer</button>
       <button type="button" id="leave-btn" class="secondary">Disconnect</button>
     </section>
 

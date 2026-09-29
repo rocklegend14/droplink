@@ -6,7 +6,9 @@ const statusEl = $('status'), sendBtn = $('send-btn'), recvBtn = $('recv-btn'),
   cancelBtn = $('cancel-btn'), codeInput = $('code'), codeBox = $('code-box'), codeOut = $('code-out'),
   transfer = $('transfer'), sendPanel = $('send-panel'), recvPanel = $('recv-panel'),
   fileInput = $('file-input'), sendFileBtn = $('send-file-btn'), progress = $('progress'),
-  download = $('download'), leaveBtn = $('leave-btn');
+  download = $('download'), leaveBtn = $('leave-btn'),
+  offerBox = $('offer'), offerText = $('offer-text'), acceptBtn = $('accept-btn'),
+  rejectBtn = $('reject-btn'), cancelTransferBtn = $('cancel-transfer-btn');
 
 const CHUNK = 16 * 1024;              // bytes per message (safe for every browser)
 const MAX_BYTES = 500 * 1024 * 1024;  // file size limit
@@ -29,6 +31,8 @@ let ws = null, state = 'idle';            // idle | waiting | joining | paired
 let role = null, pc = null, dc = null, connectTimer = null;
 let signalQueue = Promise.resolve();
 let sending = false, incoming = null, downloadUrl = null;
+let offer = null, cancelledBy = null, replyResolver = null, replyTimer = null;
+const REPLY_TIMEOUT_MS = 60000;
 
 function setStatus(msg, isError = false) {
   statusEl.textContent = msg;
@@ -55,6 +59,8 @@ function closeRtc() {
   if (dc) { dc.onclose = null; dc.close(); }
   if (pc) pc.close();
   dc = pc = null; incoming = null; sending = false; role = null;
+  offer = null; cancelledBy = null; clearReply();
+  offerBox.hidden = true; cancelTransferBtn.hidden = true; sendFileBtn.textContent = 'Send file';
   if (downloadUrl) { URL.revokeObjectURL(downloadUrl); downloadUrl = null; }
   download.hidden = true; progress.hidden = true; progress.value = 0;
   fileInput.value = ''; sendFileBtn.disabled = false;
@@ -181,16 +187,42 @@ function setupChannel(ch) {
   ch.onmessage = onData;
   ch.onclose = () => {
     if (state !== 'paired') return;
+    resolveReply('closed');
     if (incoming) failTransfer(`Connection dropped at ${Math.round(incoming.received / incoming.size * 100)}%. Pair again to retry.`);
+    else if (offer) failTransfer('Connection dropped before you answered. Pair again.');
     else if (!sending) setStatus('The direct connection closed.', true);
   };
 }
 
 // ---------- file transfer ----------
 function failTransfer(msg) {
-  incoming = null; sending = false; sendFileBtn.disabled = false;
-  progress.hidden = true;
+  incoming = null; offer = null; sending = false; sendFileBtn.disabled = false;
+  offerBox.hidden = true; cancelTransferBtn.hidden = true; progress.hidden = true;
+  if (role === 'sender') sendFileBtn.textContent = 'Try again';
   setStatus(msg, true);
+}
+
+function safeSend(obj) {
+  try { if (dc && dc.readyState === 'open') dc.send(JSON.stringify(obj)); } catch { /* channel closing */ }
+}
+
+// The sender waits here for the receiver's accept, reject or cancel.
+function waitForReply(ms) {
+  return new Promise((resolve) => {
+    replyResolver = resolve;
+    replyTimer = setTimeout(() => resolveReply('timeout'), ms);
+  });
+}
+function resolveReply(value) {
+  clearTimeout(replyTimer);
+  const r = replyResolver; replyResolver = null;
+  if (r) r(value);
+}
+function clearReply() { clearTimeout(replyTimer); replyResolver = null; }
+
+function cancelTransfer() {
+  if (sending) { cancelledBy = 'me'; safeSend({ type: 'cancel' }); resolveReply('cancelled'); }
+  else if (incoming || offer) { safeSend({ type: 'cancel' }); failTransfer('You cancelled the transfer.'); }
 }
 
 function drain(limit) {
@@ -212,12 +244,29 @@ async function sendFile() {
   if (file.size > MAX_BYTES) { setStatus(`That file is ${fmtSize(file.size)}. The limit is 500 MB.`, true); return; }
   if (!dc || dc.readyState !== 'open') { setStatus('Not connected directly yet. Wait a moment or pair again.', true); return; }
 
-  sending = true; sendFileBtn.disabled = true; showProgress(0);
-  setStatus(`Sending ${file.name} (${fmtSize(file.size)})...`);
+  sending = true; cancelledBy = null;
+  sendFileBtn.disabled = true; sendFileBtn.textContent = 'Send file';
+  cancelTransferBtn.hidden = false; progress.hidden = true;
   let offset = 0;
+  const cancelMsg = () => (cancelledBy === 'me'
+    ? 'You cancelled the transfer. Choose "Try again" to send it again.'
+    : 'The other laptop cancelled the transfer. Choose "Try again" to send it again.');
   try {
     dc.send(JSON.stringify({ type: 'meta', name: file.name, size: file.size, mime: file.type }));
+    setStatus(`Waiting for the other laptop to accept ${file.name}...`);
+    const reply = await waitForReply(REPLY_TIMEOUT_MS);
+    if (cancelledBy) return failTransfer(cancelMsg());
+    if (reply === 'reject') return failTransfer('The other laptop rejected the file. Choose "Try again" to send it again.');
+    if (reply === 'timeout') {
+      safeSend({ type: 'cancel' });
+      return failTransfer('No answer after 60 seconds. Ask the other laptop to look for the Accept button, then try again.');
+    }
+    if (reply !== 'accept') throw new Error('closed');
+
+    showProgress(0);
+    setStatus(`Sending ${file.name} (${fmtSize(file.size)})...`);
     while (offset < file.size) {
+      if (cancelledBy) return failTransfer(cancelMsg());
       if (dc.bufferedAmount > HIGH_WATER) await drain(HIGH_WATER / 2);
       const buf = await file.slice(offset, offset + CHUNK).arrayBuffer();
       dc.send(buf);
@@ -226,26 +275,42 @@ async function sendFile() {
     }
     dc.send(JSON.stringify({ type: 'done' }));
     await drain(0);
-    sending = false; sendFileBtn.disabled = false;
-    setStatus(`Sent ${file.name} (${fmtSize(file.size)}).`);
+    if (cancelledBy) return failTransfer(cancelMsg());
+    sending = false; sendFileBtn.disabled = false; cancelTransferBtn.hidden = true;
+    setStatus(`Sent ${file.name} (${fmtSize(file.size)}). Choose another file to send more.`);
   } catch {
     failTransfer(`Connection dropped at ${Math.round(offset / file.size * 100)}%. Pair again to retry.`);
   }
+}
+
+function onOffer(m) {
+  if (role !== 'receiver') return;
+  if (incoming || offer) return safeSend({ type: 'reject' }); // already busy
+  if (!Number.isFinite(m.size) || m.size <= 0 || m.size > MAX_BYTES) {
+    safeSend({ type: 'reject' });
+    return failTransfer('The sender offered a file over the 500 MB limit. It was rejected automatically.');
+  }
+  offer = { name: String(m.name || 'file'), size: m.size, mime: m.mime || 'application/octet-stream' };
+  download.hidden = true; progress.hidden = true;
+  offerText.textContent = `Incoming file: ${offer.name} (${fmtSize(offer.size)})`;
+  offerBox.hidden = false;
+  setStatus(`The other laptop wants to send you ${offer.name}. Accept or reject it.`);
+  acceptBtn.focus();
 }
 
 function onData(e) {
   if (typeof e.data === 'string') {
     let m;
     try { m = JSON.parse(e.data); } catch { return; }
-    if (m.type === 'meta') {
-      if (!Number.isFinite(m.size) || m.size <= 0 || m.size > MAX_BYTES) {
-        return failTransfer('The sender tried to send a file over the 500 MB limit. Nothing was saved.');
-      }
-      download.hidden = true;
-      incoming = { name: String(m.name || 'file'), size: m.size, mime: m.mime || 'application/octet-stream', chunks: [], received: 0 };
-      showProgress(0);
-      setStatus(`Receiving ${incoming.name} (${fmtSize(incoming.size)})...`);
-    } else if (m.type === 'done' && incoming) {
+    if (m.type === 'meta') return onOffer(m);
+    if (m.type === 'accept') return resolveReply('accept');
+    if (m.type === 'reject') return resolveReply('reject');
+    if (m.type === 'cancel') {
+      if (sending) { cancelledBy = 'peer'; resolveReply('cancel'); }
+      else if (incoming || offer) failTransfer('The sender cancelled the transfer.');
+      return;
+    }
+    if (m.type === 'done' && incoming) {
       if (incoming.received !== incoming.size) {
         return failTransfer('The file arrived incomplete. Ask the sender to try again.');
       }
@@ -255,6 +320,7 @@ function onData(e) {
       download.download = incoming.name;
       download.textContent = `Save ${incoming.name} (${fmtSize(incoming.size)})`;
       download.hidden = false;
+      cancelTransferBtn.hidden = true;
       setStatus('File received. Use the link below to save it.');
       download.focus();
       incoming = null;
@@ -262,7 +328,10 @@ function onData(e) {
   } else if (incoming) {
     incoming.chunks.push(e.data);
     incoming.received += e.data.byteLength;
-    if (incoming.received > incoming.size) return failTransfer('Received more data than expected. Ask the sender to try again.');
+    if (incoming.received > incoming.size) {
+      safeSend({ type: 'cancel' });
+      return failTransfer('Received more data than expected. Ask the sender to try again.');
+    }
     showProgress(incoming.received / incoming.size * 100);
   }
 }
@@ -294,7 +363,28 @@ function cancel() {
   sendBtn.focus();
 }
 cancelBtn.addEventListener('click', cancel);
-document.addEventListener('keydown', (e) => { if (e.key === 'Escape') cancel(); });
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape') return;
+  if (state === 'waiting') cancel();
+  else if (offer) rejectBtn.click();
+  else if (sending || incoming) cancelTransfer();
+});
+
+acceptBtn.addEventListener('click', () => {
+  if (!offer) return;
+  incoming = { ...offer, chunks: [], received: 0 };
+  offer = null; offerBox.hidden = true; cancelTransferBtn.hidden = false;
+  showProgress(0);
+  setStatus(`Receiving ${incoming.name} (${fmtSize(incoming.size)})...`);
+  safeSend({ type: 'accept' });
+});
+rejectBtn.addEventListener('click', () => {
+  if (!offer) return;
+  offer = null; offerBox.hidden = true;
+  safeSend({ type: 'reject' });
+  setStatus('You rejected the file. The sender has been told.');
+});
+cancelTransferBtn.addEventListener('click', cancelTransfer);
 
 sendFileBtn.addEventListener('click', sendFile);
 leaveBtn.addEventListener('click', () => {
