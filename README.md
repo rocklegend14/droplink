@@ -127,6 +127,16 @@ test-*.js          tests (see below)
 render.yaml        Render deploy blueprint
 ```
 
+## Network requirements
+Both laptops must be on the same local network.
+
+- **Why:** the browsers connect directly to each other. Connecting across different networks normally needs STUN or TURN servers, and DropLink deliberately uses none. That keeps files off the internet and off any relay, at the cost of only working locally.
+- **What works:** two laptops on the same router, on Wi-Fi or Ethernet.
+- **What may not:** guest or public Wi-Fi (college, office, cafe) and some hotspots isolate devices from each other, so it can fail even when both show the same network name. Laptops on different networks will not connect.
+- **What the user sees:** after about 15 seconds, "Couldn't connect directly to the other laptop. Both must be on the same Wi-Fi network. Guest and public networks often block device-to-device traffic."
+- **Internet:** both devices need internet to reach the pairing server when it is deployed. Only the file transfer stays on the local network. Run the app on one laptop to pair with no internet.
+- **Why no STUN or TURN:** a STUN server would let many home networks connect across the internet, but it is not guaranteed and shares each device's public IP address with the provider. A TURN relay works almost everywhere, but the files would then pass through a server, which is the opposite of this project's aim. Transfers over the internet are out of scope.
+
 ## Tests
 ```bash
 npm run test:html      # keyboard and accessibility checks on the page structure
@@ -146,7 +156,7 @@ The app needs a host that keeps a Node process and WebSockets running, so static
 Once deployed, both laptops open the same `https://` URL. The page uses secure WebSockets automatically.
 
 ## Known limitations
-- **Both laptops must be on the same network.** Guest or public Wi-Fi may block device-to-device traffic.
+- **Both laptops must be on the same network** (see Network requirements). Guest or public Wi-Fi may block device-to-device traffic.
 - **Pairing needs internet when deployed.** Only the handshake goes through the server; files never do. Run it locally on one laptop to pair without internet.
 - **Limits:** 500 MB and 50 items per batch, because files are held in memory until saved.
 - **The wrong-code limit is per IP address.** People behind one shared address share the limit.
