@@ -33,6 +33,19 @@
       <button type="button" id="recv-btn">Connect</button>
     </section>
 
+    <section id="transfer" aria-labelledby="transfer-h" hidden>
+      <h2 id="transfer-h">Transfer</h2>
+      <div id="send-panel" hidden>
+        <label for="file-input">Choose a file to send (up to 500 MB)</label>
+        <input type="file" id="file-input" class="file">
+        <button type="button" id="send-file-btn">Send file</button>
+      </div>
+      <p id="recv-panel" hidden>The file will appear here when the sender starts.</p>
+      <progress id="progress" max="100" value="0" hidden aria-label="Transfer progress"></progress>
+      <p><a id="download" hidden></a></p>
+      <button type="button" id="leave-btn" class="secondary">Disconnect</button>
+    </section>
+
     <p id="status" role="status" aria-live="polite">Not connected.</p>
   </main>
 
