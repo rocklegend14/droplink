@@ -1,5 +1,7 @@
 # DropLink
 
+![Tests](https://github.com/rocklegend14/droplink/actions/workflows/test.yml/badge.svg)
+
 Send files and code folders from one laptop to another over the same Wi-Fi, straight from the browser. No account, no install, no cloud upload.
 
 **Modeled on:** Windows Nearby Sharing (the "send a file to a nearby device" feature).
@@ -58,11 +60,11 @@ The whole flow works without a mouse.
 | Enter in the code box | Connect |
 | Enter or Space on a button | Press it (Accept is focused when files are offered) |
 | Enter or Space on a file or folder picker | Open the picker |
-| Escape | Cancel a waiting code, reject an incoming offer, or cancel a running transfer or zip |
+| Escape | Cancel a waiting code, reject an incoming offer, cancel a running transfer or zip, or (when none apply) dismiss the message bar |
 
 Focus is moved for you at each step: to the code when one is created, to the Transfer heading when paired, to the file picker on the sender, to Accept when files are offered, and to the first save link when files arrive. After removing a file, focus stays in the list. If an error hides the control you were on, focus returns to the Send button or the code box. A skip link jumps past the header.
 
-Status and error messages appear in a bar fixed to the bottom of the window, so they are visible wherever you have scrolled, and are announced by screen readers (errors immediately). Buttons that cancel show their shortcut, for example "Cancel transfer (Esc)".
+Status and error messages appear in a bar fixed to the bottom of the window, so they are visible wherever you have scrolled, and are announced by screen readers (errors immediately). Normal messages fade after 8 seconds; errors stay until you click the bar or press Escape. Buttons that cancel show their shortcut, for example "Cancel transfer (Esc)".
 
 ## Failure cases handled
 Every message says what went wrong and what to try next.
