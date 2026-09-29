@@ -25,6 +25,7 @@ const MESSAGES = {
   'bad-message': 'Something went wrong talking to the server. Reload the page and try again.',
 };
 const SERVER_DOWN = "Can't reach the pairing server. Check your internet connection, then try again.";
+const OFFLINE = "You appear to be offline. Connect to Wi-Fi, then try again.";
 const LINK_FAILED = "Couldn't connect directly to the other laptop. Both must be on the same Wi-Fi network. Guest and public networks often block device-to-device traffic.";
 
 let ws = null, state = 'idle';            // idle | waiting | joining | paired
@@ -37,6 +38,7 @@ const REPLY_TIMEOUT_MS = 60000;
 function setStatus(msg, isError = false) {
   statusEl.textContent = msg;
   statusEl.classList.toggle('error', isError);
+  statusEl.setAttribute('aria-live', isError ? 'assertive' : 'polite');
 }
 const fmtSize = (n) => n < 1024 * 1024 ? `${Math.max(1, Math.round(n / 1024))} KB` : `${(n / 1048576).toFixed(1)} MB`;
 const showProgress = (pct) => { progress.hidden = false; progress.value = Math.min(100, pct); };
@@ -88,9 +90,9 @@ async function open(firstMessage) {
   try {
     ws = await connect();
   } catch {
-    return reset(SERVER_DOWN, true);
+    return reset(navigator.onLine === false ? OFFLINE : SERVER_DOWN, true);
   }
-  ws.onmessage = (e) => handle(JSON.parse(e.data));
+  ws.onmessage = (e) => { let m; try { m = JSON.parse(e.data); } catch { return; } handle(m); };
   ws.onclose = () => {
     if (state === 'idle') return;
     if (dc && dc.readyState === 'open') return; // transfer does not need the server anymore
@@ -145,7 +147,11 @@ function startRtc() {
   // No STUN/TURN servers: traffic stays on the local network.
   pc = new RTCPeerConnection({ iceServers: [] });
   pc.onicecandidate = (e) => { if (e.candidate) sendSignal({ candidate: e.candidate }); };
-  pc.onconnectionstatechange = () => { if (pc && pc.connectionState === 'failed') linkFailed(); };
+  pc.onconnectionstatechange = () => {
+    if (!pc || pc.connectionState !== 'failed') return;
+    if (incoming || offer) failTransfer('The Wi-Fi connection between the laptops was lost. Pair again to retry.');
+    else if (!sending) linkFailed();
+  };
   connectTimer = setTimeout(linkFailed, CONNECT_TIMEOUT_MS);
 
   if (role === 'sender') {
@@ -268,7 +274,12 @@ async function sendFile() {
     while (offset < file.size) {
       if (cancelledBy) return failTransfer(cancelMsg());
       if (dc.bufferedAmount > HIGH_WATER) await drain(HIGH_WATER / 2);
-      const buf = await file.slice(offset, offset + CHUNK).arrayBuffer();
+      let buf;
+      try { buf = await file.slice(offset, offset + CHUNK).arrayBuffer(); }
+      catch {
+        safeSend({ type: 'cancel' });
+        return failTransfer(`Couldn't read ${file.name}. It may have been moved, deleted or locked by another program. Choose it again, then try again.`);
+      }
       dc.send(buf);
       offset += buf.byteLength;
       showProgress(offset / file.size * 100);
@@ -315,7 +326,8 @@ function onData(e) {
         return failTransfer('The file arrived incomplete. Ask the sender to try again.');
       }
       if (downloadUrl) URL.revokeObjectURL(downloadUrl);
-      downloadUrl = URL.createObjectURL(new Blob(incoming.chunks, { type: incoming.mime }));
+      try { downloadUrl = URL.createObjectURL(new Blob(incoming.chunks, { type: incoming.mime })); }
+      catch { return failTransfer('Your browser ran out of memory while saving the file. Close other tabs or ask for a smaller file.'); }
       download.href = downloadUrl;
       download.download = incoming.name;
       download.textContent = `Save ${incoming.name} (${fmtSize(incoming.size)})`;
@@ -326,7 +338,11 @@ function onData(e) {
       incoming = null;
     }
   } else if (incoming) {
-    incoming.chunks.push(e.data);
+    try { incoming.chunks.push(e.data); }
+    catch {
+      safeSend({ type: 'cancel' });
+      return failTransfer('Your browser ran out of memory while receiving. Close other tabs or ask for a smaller file.');
+    }
     incoming.received += e.data.byteLength;
     if (incoming.received > incoming.size) {
       safeSend({ type: 'cancel' });
@@ -392,3 +408,8 @@ leaveBtn.addEventListener('click', () => {
   reset('Disconnected.');
   sendBtn.focus();
 });
+
+if (typeof RTCPeerConnection === 'undefined' || typeof WebSocket === 'undefined') {
+  sendBtn.disabled = true; recvBtn.disabled = true; codeInput.disabled = true;
+  setStatus("This browser can't send files directly. Use a current version of Chrome, Edge, Firefox or Safari.", true);
+}
