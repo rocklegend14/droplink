@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node server.js",
     "test": "node test-pairing.js",
-    "test:html": "node test-html.js"
+    "test:html": "node test-html.js",
+    "test:folder": "node test-folder.js"
   },
   "dependencies": { "ws": "^8.18.0" },
   "engines": { "node": ">=18" },

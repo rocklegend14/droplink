@@ -6,7 +6,7 @@ const statusEl = $('status'), sendBtn = $('send-btn'), recvBtn = $('recv-btn'),
   cancelBtn = $('cancel-btn'), codeInput = $('code'), codeBox = $('code-box'), codeOut = $('code-out'),
   transfer = $('transfer'), sendPanel = $('send-panel'), recvPanel = $('recv-panel'),
   fileInput = $('file-input'), sendFileBtn = $('send-file-btn'), progress = $('progress'),
-  downloads = $('downloads'), leaveBtn = $('leave-btn'), selection = $('selection'), selectionList = $('selection-list'), clearBtn = $('clear-btn'),
+  downloads = $('downloads'), leaveBtn = $('leave-btn'), selection = $('selection'), selectionList = $('selection-list'), clearBtn = $('clear-btn'), folderInput = $('folder-input'),
   offerBox = $('offer'), offerText = $('offer-text'), acceptBtn = $('accept-btn'),
   rejectBtn = $('reject-btn'), cancelTransferBtn = $('cancel-transfer-btn');
 
@@ -269,13 +269,13 @@ function drain(limit) {
 
 async function sendFile() {
   if (sending) return; // ignore double clicks
-  const files = [...selectedFiles];
-  if (!files.length) { setStatus('Choose at least one file first.', true); fileInput.focus(); return; }
-  const empty = files.find((f) => f.size === 0);
+  const chosen = [...selectedFiles];
+  if (!chosen.length) { setStatus('Choose at least one file first.', true); fileInput.focus(); return; }
+  const empty = chosen.find((f) => !f.isFolder && f.size === 0);
   if (empty) { setStatus(`${empty.name} is empty. Remove it from your selection and try again.`, true); return; }
-  if (files.length > MAX_FILES) { setStatus(`You selected ${files.length} files. The limit is ${MAX_FILES} per batch.`, true); return; }
-  const total = files.reduce((n, f) => n + f.size, 0);
-  if (total > MAX_BYTES) { setStatus(`These files add up to ${fmtSize(total)}. The limit is 500 MB in total. Send them in smaller batches.`, true); return; }
+  if (chosen.length > MAX_FILES) { setStatus(`You selected ${chosen.length} items. The limit is ${MAX_FILES} per batch.`, true); return; }
+  const chosenTotal = chosen.reduce((n, f) => n + f.size, 0);
+  if (chosenTotal > MAX_BYTES) { setStatus(`These files add up to ${fmtSize(chosenTotal)}. The limit is 500 MB in total. Send them in smaller batches.`, true); return; }
   if (!dc || dc.readyState !== 'open') { setStatus('Not connected directly yet. Wait a moment or pair again.', true); return; }
 
   sending = true; cancelledBy = null;
@@ -283,14 +283,35 @@ async function sendFile() {
   cancelTransferBtn.hidden = false; progress.hidden = true;
   lockSelection(true);
   $('transfer-h').focus();
-  let sent = 0;
-  const label = files.length === 1 ? files[0].name : `${files.length} files`;
+  let sent = 0, files = chosen, total = chosenTotal;
+  const label = () => (files.length === 1 ? files[0].name : `${files.length} files`);
   const cancelMsg = () => (cancelledBy === 'me'
     ? 'You cancelled the transfer. Choose "Try again" to send it again.'
     : 'The other laptop cancelled the transfer. Choose "Try again" to send it again.');
   try {
+    if (chosen.some((f) => f.isFolder)) {
+      try {
+        files = [];
+        for (const item of chosen) {
+          if (!item.isFolder) { files.push(item); continue; }
+          const blob = await DropFolder.zipFolder(
+            item,
+            (done, n) => setStatus(`Zipping ${item.displayName}: ${done} of ${n} files`),
+            () => !!cancelledBy,
+          );
+          if (!blob) return failTransfer(cancelMsg());
+          files.push(new File([blob], item.name, { type: 'application/zip' }));
+        }
+      } catch (err) {
+        return failTransfer(err && err.path
+          ? `Couldn't read ${err.path} inside the folder. It may be locked by another program, or you may not have permission. Fix it, then remove the folder and add it again.`
+          : "Couldn't zip the folder. Your browser may have run out of memory. Close other tabs or send a smaller folder.");
+      }
+      total = files.reduce((n, f) => n + f.size, 0);
+      if (total > MAX_BYTES) return failTransfer(`After zipping, the files add up to ${fmtSize(total)}. The limit is 500 MB in total.`);
+    }
     dc.send(JSON.stringify({ type: 'meta', files: files.map((f) => ({ name: f.name, size: f.size, mime: f.type })) }));
-    setStatus(`Waiting for the other laptop to accept ${label}...`);
+    setStatus(`Waiting for the other laptop to accept ${label()}...`);
     const reply = await waitForReply(REPLY_TIMEOUT_MS);
     if (cancelledBy) return failTransfer(cancelMsg());
     if (reply === 'reject') return failTransfer('The other laptop rejected the files. Choose "Try again" to send them again.');
@@ -431,7 +452,14 @@ function renderSelection() {
   selectedFiles.forEach((f, i) => {
     const li = document.createElement('li');
     const label = document.createElement('span');
-    label.textContent = `${f.name} (${fmtSize(f.size)})`;
+    label.textContent = f.isFolder
+      ? `${f.displayName} folder: ${f.count} file${f.count === 1 ? '' : 's'}, ${fmtSize(f.size)}, sent as ${f.name}`
+      : `${f.name} (${fmtSize(f.size)})`;
+    if (f.isFolder && f.skippedNote) {
+      const note = document.createElement('small');
+      note.className = 'note'; note.textContent = f.skippedNote;
+      label.append(note);
+    }
     const btn = document.createElement('button');
     btn.type = 'button'; btn.className = 'secondary small'; btn.dataset.index = i;
     btn.textContent = 'Remove'; btn.setAttribute('aria-label', `Remove ${f.name}`);
@@ -440,13 +468,13 @@ function renderSelection() {
   });
   const total = selectedFiles.reduce((n, f) => n + f.size, 0);
   selection.textContent = selectedFiles.length
-    ? `${selectedFiles.length} file${selectedFiles.length === 1 ? '' : 's'} selected, ${fmtSize(total)} in total`
+    ? `${selectedFiles.length} item${selectedFiles.length === 1 ? '' : 's'} selected, ${fmtSize(total)} in total`
     : '';
   clearBtn.hidden = selectedFiles.length < 2;
 }
 
 function lockSelection(locked) { // no edits while a transfer is running
-  fileInput.disabled = locked; clearBtn.disabled = locked;
+  fileInput.disabled = locked; folderInput.disabled = locked; clearBtn.disabled = locked;
   selectionList.querySelectorAll('button').forEach((b) => { b.disabled = locked; });
 }
 
@@ -518,6 +546,21 @@ fileInput.addEventListener('change', () => {
   setStatus(skipped
     ? `Skipped ${skipped} file${skipped === 1 ? '' : 's'} already in the list.`
     : `${selectedFiles.length} file${selectedFiles.length === 1 ? '' : 's'} ready to send.`);
+});
+
+folderInput.addEventListener('change', () => {
+  const list = [...folderInput.files];
+  folderInput.value = ''; // lets the same folder be picked again later
+  if (typeof DropFolder === 'undefined') { setStatus("Folder support didn't load. Reload the page and try again.", true); return; }
+  const r = DropFolder.filterFolder(list);
+  if (r.error) { setStatus(r.error, true); return; }
+  const e = r.entry;
+  if (selectedFiles.some((f) => f.isFolder && f.name === e.name && f.count === e.count && f.size === e.size)) {
+    setStatus(`${e.displayName} is already in the list.`, true); return;
+  }
+  selectedFiles.push(e);
+  renderSelection();
+  setStatus(`Added folder ${e.displayName}: ${e.count} file${e.count === 1 ? '' : 's'}, ${fmtSize(e.size)}, sent as ${e.name}.${e.skippedNote ? ` ${e.skippedNote}.` : ''}`);
 });
 
 selectionList.addEventListener('click', (e) => {

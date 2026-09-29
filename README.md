@@ -36,12 +36,19 @@ _(Update as features land.)_
 - [x] Clear failure messages (each says what happened and what to do)
 - [x] Full keyboard use
 - [x] Multiple files in one batch (up to 50 files, 500 MB in total), one accept for the batch, a save link per file. Files can be added in several picks, removed one by one, or cleared all at once before sending
-- [ ] Folder transfer (zipped, skipping `node_modules`, `.git`)
+- [x] Folder transfer: zipped in the browser, skipping `node_modules`, `.git` and build folders, with a count and size shown before sending
 
 ## How it works
 1. The sender gets a 6-digit code from the pairing server and the receiver enters it.
 2. The server relays only the WebRTC handshake. The browsers then open a direct data channel with no STUN or TURN servers, so it only connects on the same local network.
 3. The receiver accepts or rejects the whole batch once. Files are then sent one after another in 16 KB chunks with backpressure, and the receiver checks every file's size before offering a save link for it.
+
+## Sending a folder
+Choose a folder and it is added to the list as one item, for example `my-app folder: 87 files, 2.1 MB, sent as my-app.zip`, with a note of what was skipped. Nothing is zipped until you press Send, so you can remove it first. The receiver gets one `.zip` and unzips it to get the folder back.
+
+Skipped by default: `node_modules`, `.git`, `dist`, `build`, `.next`, `.nuxt`, `.cache`, `__pycache__`, `.venv`, `venv`, `.DS_Store` and `Thumbs.db`. The skip list is `SKIP_DIRS` in `public/folder.js`.
+
+Zipping uses [fflate](https://github.com/101arrowz/fflate) (MIT), included in `public/vendor/` so the app needs no CDN. The folder logic is tested without a browser: `npm run test:folder`.
 
 ## Keyboard use
 The whole flow works without a mouse.
@@ -75,7 +82,10 @@ Every message says what went wrong and what to try next.
 | File can't be read (moved, locked) | Says so, and to choose it again |
 | Browser runs out of memory | Says to close tabs or use a smaller file |
 | Browser without WebRTC | Says which browsers work |
-| Folder cases (empty, too large, unreadable) | Added in step 8 |
+| Empty folder, or everything in it is skipped | Says nothing was added and why |
+| Folder over 500 MB after skipping junk | Refused before zipping, with the size |
+| A file inside a folder can't be read | Names the file and says how to fix it |
+| Browser runs out of memory while zipping | Says to close tabs or send a smaller folder |
 
 ## Compared with the original
 **Windows Nearby Sharing**

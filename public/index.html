@@ -40,6 +40,8 @@
       <div id="send-panel" hidden>
         <label for="file-input">Choose files to send (add more any time, up to 50 files and 500 MB in total)</label>
         <input type="file" id="file-input" class="file" multiple>
+        <label for="folder-input">Or choose a folder (sent as a zip; node_modules, .git and build folders are skipped)</label>
+        <input type="file" id="folder-input" class="file" webkitdirectory>
         <ul id="selection-list" class="selection-list" aria-label="Selected files"></ul>
         <div class="selection-row"><span id="selection"></span> <button type="button" id="clear-btn" class="secondary small" hidden>Clear all</button></div>
         <button type="button" id="send-file-btn">Send</button>
@@ -58,6 +60,8 @@
 
   </main>
 
+  <script src="vendor/fflate.js"></script>
+  <script src="folder.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
