@@ -39,7 +39,7 @@ const REPLY_TIMEOUT_MS = 60000;
 function setStatus(msg, isError = false) {
   statusEl.textContent = msg;
   statusEl.classList.toggle('error', isError);
-  statusEl.classList.remove('pop'); void statusEl.offsetWidth; statusEl.classList.add('pop'); ]
+  statusEl.classList.remove('pop'); void statusEl.offsetWidth; statusEl.classList.add('pop'); 
   statusEl.setAttribute('aria-live', isError ? 'assertive' : 'polite');
 }
 const fmtSize = (n) => n < 1024 * 1024 ? `${Math.max(1, Math.round(n / 1024))} KB` : `${(n / 1048576).toFixed(1)} MB`;
