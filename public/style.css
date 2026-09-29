@@ -29,7 +29,7 @@ button:disabled, input:disabled { opacity: .5; cursor: not-allowed; }
 :focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
 #status { color: var(--muted); border-bottom: 1px solid var(--line); padding-bottom: 1rem; margin: 0 0 .5rem; min-height: 1.5em; }
 .skip { position: absolute; left: -999px; }
-.skip:focus { left: 1rem; top: 1rem; background: var(--bg); padding: .5rem; }
+.skip:focus { left: 1rem; top: 1rem; z-index: 10; background: var(--ink); color: var(--bg); padding: .5rem 1rem; border-radius: 4px; font-weight: 600; text-decoration: none; }
 
 .code { display: block; font: 700 2.25rem/1.2 ui-monospace, Consolas, monospace; letter-spacing: .3em; margin: .25rem 0 .75rem; }
 .code:focus-visible { outline-offset: 4px; }
