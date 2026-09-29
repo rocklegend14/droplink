@@ -4,60 +4,76 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>DropLink</title>
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%230b5cad'/%3E%3Cpath d='M16 7v13m-6-6 6 6 6-6M9 25h14' stroke='%23fff' stroke-width='3' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23c2410c'/%3E%3Cpath d='M16 7v13m-6-6 6 6 6-6M9 25h14' stroke='%23fff' stroke-width='3' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+  <script>try { var t = localStorage.getItem('droplink-theme'); if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t); } catch (e) {}</script>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
   <a class="skip" href="#main">Skip to main content</a>
   <header>
-    <h1>DropLink</h1>
-    <p>Move files and code folders between two laptops on the same Wi-Fi. No account, no cloud upload.</p>
+    <div class="top">
+      <h1>
+        <svg class="mark" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8" fill="currentColor"/><path d="M16 7v13m-6-6 6 6 6-6M9 25h14" stroke="var(--on-accent)" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        DropLink
+      </h1>
+      <button type="button" id="theme-btn" class="secondary small">Dark mode</button>
+    </div>
+    <p class="tagline">Move files and code folders between two laptops on the same Wi-Fi. No account, no cloud upload.</p>
   </header>
 
   <main id="main">
-    <p id="status" role="status" aria-live="polite">Not connected.</p>
+    <p id="status" role="status" aria-live="polite"></p>
 
-    <section aria-labelledby="send-h">
-      <h2 id="send-h">Send</h2>
-      <p>Get a code, then enter it on the other laptop.</p>
-      <button type="button" id="send-btn">Get pairing code</button>
-      <div id="code-box" hidden>
-        <p>Your code (valid for <span id="ttl">5</span> minutes):</p>
-        <output id="code-out" class="code" tabindex="-1" aria-label="Pairing code"></output>
-        <button type="button" id="cancel-btn" class="secondary" aria-keyshortcuts="Escape">Cancel (Esc)</button>
-      </div>
-    </section>
+    <div class="grid">
+      <section class="card" aria-labelledby="send-h">
+        <h2 id="send-h">Send</h2>
+        <p class="hint">Get a code, then enter it on the other laptop.</p>
+        <button type="button" id="send-btn">Get pairing code</button>
+        <div id="code-box" hidden>
+          <p>Your code (valid for <span id="ttl">5</span> minutes):</p>
+          <output id="code-out" class="code" tabindex="-1" aria-label="Pairing code"></output>
+          <button type="button" id="cancel-btn" class="secondary" aria-keyshortcuts="Escape">Cancel (Esc)</button>
+        </div>
+      </section>
 
-    <section aria-labelledby="recv-h">
-      <h2 id="recv-h">Receive</h2>
-      <label for="code">Enter the 6-digit code from the sending laptop</label>
-      <input id="code" inputmode="numeric" maxlength="6" autocomplete="off" aria-describedby="status">
-      <button type="button" id="recv-btn">Connect</button>
-    </section>
+      <section class="card" aria-labelledby="recv-h">
+        <h2 id="recv-h">Receive</h2>
+        <p class="hint">Type the code shown on the sending laptop.</p>
+        <label for="code">6-digit code</label>
+        <div class="row">
+          <input id="code" inputmode="numeric" maxlength="6" autocomplete="off" aria-describedby="status">
+          <button type="button" id="recv-btn">Connect</button>
+        </div>
+      </section>
+    </div>
 
-    <section id="transfer" aria-labelledby="transfer-h" hidden>
+    <section id="transfer" class="card" aria-labelledby="transfer-h" hidden>
       <h2 id="transfer-h" tabindex="-1">Transfer</h2>
       <div id="send-panel" hidden>
         <label for="file-input">Choose files to send (add more any time, up to 50 files and 500 MB in total)</label>
-        <input type="file" id="file-input" class="file" multiple>
+        <input type="file" id="file-input" multiple>
         <label for="folder-input">Or choose a folder (sent as a zip; node_modules, .git and build folders are skipped)</label>
-        <input type="file" id="folder-input" class="file" webkitdirectory>
+        <input type="file" id="folder-input" webkitdirectory>
+        <div class="check"><input type="checkbox" id="include-env"> <label for="include-env">Include .env files when sending a folder (they may contain secrets)</label></div>
         <ul id="selection-list" class="selection-list" aria-label="Selected files"></ul>
         <div class="selection-row"><span id="selection"></span> <button type="button" id="clear-btn" class="secondary small" hidden>Clear all</button></div>
-        <button type="button" id="send-file-btn">Send</button>
+        <div class="actions"><button type="button" id="send-file-btn">Send</button></div>
       </div>
-      <p id="recv-panel" hidden>Files will appear here when the sender starts.</p>
+      <p id="recv-panel" class="hint" hidden>Files will appear here when the sender starts.</p>
       <div id="offer" hidden>
         <p id="offer-text"></p>
-        <button type="button" id="accept-btn">Accept</button>
-        <button type="button" id="reject-btn" class="secondary" aria-keyshortcuts="Escape">Reject (Esc)</button>
+        <div class="actions">
+          <button type="button" id="accept-btn">Accept</button>
+          <button type="button" id="reject-btn" class="secondary" aria-keyshortcuts="Escape">Reject (Esc)</button>
+        </div>
       </div>
       <progress id="progress" max="100" value="0" hidden aria-label="Transfer progress"></progress>
       <ul id="downloads" class="downloads" hidden></ul>
-      <button type="button" id="cancel-transfer-btn" class="secondary" aria-keyshortcuts="Escape" hidden>Cancel transfer (Esc)</button>
-      <button type="button" id="leave-btn" class="secondary">Disconnect</button>
+      <div class="actions">
+        <button type="button" id="cancel-transfer-btn" class="secondary" aria-keyshortcuts="Escape" hidden>Cancel transfer (Esc)</button>
+        <button type="button" id="leave-btn" class="secondary">Disconnect</button>
+      </div>
     </section>
-
   </main>
 
   <script src="vendor/fflate.js"></script>

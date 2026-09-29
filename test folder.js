@@ -1,4 +1,3 @@
-// Tests folder filtering and zipping without a browser. Run: npm run test:folder
 const { filterFolder, zipFolder } = require('./public/folder.js');
 const { unzipSync, strFromU8 } = require('./public/vendor/fflate.js');
 let failed = false;
@@ -40,5 +39,12 @@ const fake = (path, text, extra = {}) => {
 
   const stopped = await zipFolder(r.entry, null, () => true);
   ok('cancelling stops zipping', stopped === null);
+  const envList = [fake('app/index.js', 'x'), fake('app/.env', 'SECRET=1'), fake('app/.env.production', 'SECRET=2'), fake('app/.env.example', 'SECRET='), fake('app/.gitignore', 'node_modules')];
+  const noEnv = filterFolder(envList);
+  ok('.env and .env.production are skipped by default', noEnv.entry.count === 3 && /\.env files \(2 files\)/.test(noEnv.entry.skippedNote));
+  ok('.env.example and .gitignore are still sent', noEnv.entry.files.some((f) => f.path === 'app/.env.example') && noEnv.entry.files.some((f) => f.path === 'app/.gitignore'));
+  ok('skipped note tells the user how to include .env', /Include \.env files/.test(noEnv.entry.skippedNote));
+  const withEnv = filterFolder(envList, { includeEnv: true });
+  ok('includeEnv sends every file', withEnv.entry.count === 5 && !/env/.test(withEnv.entry.skippedNote));
   process.exit(failed ? 1 : 0);
 })();

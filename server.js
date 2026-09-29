@@ -1,5 +1,3 @@
-// DropLink server. Step 1: serves the static page and a health check.
-// Pairing over WebSocket lives in pairing.js (it only relays handshakes, never files).
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
@@ -30,7 +28,6 @@ const server = http.createServer((req, res) => {
   const requested = url.pathname === '/' ? '/index.html' : decodeURIComponent(url.pathname);
   const filePath = path.join(PUBLIC_DIR, path.normalize(requested));
 
-  // Block path traversal (e.g. /../server.js)
   if (!filePath.startsWith(PUBLIC_DIR)) {
     res.writeHead(403);
     return res.end('Forbidden');

@@ -1,3 +1,36 @@
+# Dependencies (restored with `npm install`)
 node_modules/
+
+# Secrets and local config (keep the shareable template)
 .env
+.env.*
+!.env.example
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+logs/
+
+# Test and build output
+coverage/
+dist/
+build/
+.cache/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.swp
+
+# Editor and IDE settings
+.vscode/
+.idea/
+*.sublime-workspace
+
+# Operating system files
 .DS_Store
+Thumbs.db
+Desktop.ini

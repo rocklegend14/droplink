@@ -1,18 +1,16 @@
-// Pairing: creates 6-digit codes and relays handshake messages between two browsers.
-// It never sees file data. Files travel directly between browsers (step 3+).
 const { WebSocketServer } = require('ws');
 const crypto = require('crypto');
 
-const CODE_TTL_MS = Number(process.env.CODE_TTL_MS) || 5 * 60 * 1000; // code lifetime
-const EXPIRED_MEMORY_MS = 10 * 60 * 1000; // remember expired codes to explain the error
-const MAX_BAD_ATTEMPTS = 5; // wrong codes allowed per IP per window
+const CODE_TTL_MS = Number(process.env.CODE_TTL_MS) || 5 * 60 * 1000; 
+const EXPIRED_MEMORY_MS = 10 * 60 * 1000; 
+const MAX_BAD_ATTEMPTS = 5; 
 const ATTEMPT_WINDOW_MS = 60 * 1000;
 
 function attachPairing(server) {
   const wss = new WebSocketServer({ server, path: '/ws', maxPayload: 64 * 1024 });
-  const rooms = new Map();   // code -> { sender, receiver, timer }
-  const expired = new Map(); // code -> cleanup timer
-  const attempts = new Map(); // ip -> { n, resetAt }
+  const rooms = new Map();   
+  const expired = new Map(); 
+  const attempts = new Map(); 
 
   const send = (ws, msg) => { if (ws && ws.readyState === 1) ws.send(JSON.stringify(msg)); };
   const fail = (ws, code) => send(ws, { type: 'error', code });
@@ -90,7 +88,7 @@ function attachPairing(server) {
         return send(ws, { type: 'paired', role: 'receiver' });
       }
 
-      if (msg.type === 'signal') { // relay WebRTC handshake data to the other device
+      if (msg.type === 'signal') { 
         const room = ws.room && rooms.get(ws.room.code);
         if (!room || !room.receiver) return fail(ws, 'not-paired');
         const other = ws.room.role === 'sender' ? room.receiver : room.sender;
@@ -105,7 +103,6 @@ function attachPairing(server) {
     ws.on('error', () => leave(ws));
   });
 
-  // Drop dead connections so stale codes don't linger.
   const beat = setInterval(() => {
     for (const ws of wss.clients) {
       if (!ws.isAlive) { ws.terminate(); continue; }

@@ -1,19 +1,17 @@
-// Steps 2-3: pairing over WebSocket, then a direct WebRTC data channel that carries one file.
-// The server only relays the handshake. File bytes never pass through it.
 'use strict';
 const $ = (id) => document.getElementById(id);
 const statusEl = $('status'), sendBtn = $('send-btn'), recvBtn = $('recv-btn'),
   cancelBtn = $('cancel-btn'), codeInput = $('code'), codeBox = $('code-box'), codeOut = $('code-out'),
   transfer = $('transfer'), sendPanel = $('send-panel'), recvPanel = $('recv-panel'),
   fileInput = $('file-input'), sendFileBtn = $('send-file-btn'), progress = $('progress'),
-  downloads = $('downloads'), leaveBtn = $('leave-btn'), selection = $('selection'), selectionList = $('selection-list'), clearBtn = $('clear-btn'), folderInput = $('folder-input'),
+  downloads = $('downloads'), leaveBtn = $('leave-btn'), selection = $('selection'), selectionList = $('selection-list'), clearBtn = $('clear-btn'), folderInput = $('folder-input'), includeEnv = $('include-env'),
   offerBox = $('offer'), offerText = $('offer-text'), acceptBtn = $('accept-btn'),
   rejectBtn = $('reject-btn'), cancelTransferBtn = $('cancel-transfer-btn');
 
-const CHUNK = 16 * 1024;              // bytes per message (safe for every browser)
-const MAX_BYTES = 500 * 1024 * 1024;  // limit for all files in one batch (they are held in memory)
+const CHUNK = 16 * 1024;             
+const MAX_BYTES = 500 * 1024 * 1024;  
 const MAX_FILES = 50;
-const HIGH_WATER = 4 * 1024 * 1024;   // pause sending when this much is queued
+const HIGH_WATER = 4 * 1024 * 1024;   
 const CONNECT_TIMEOUT_MS = 15000;
 
 const MESSAGES = {
@@ -29,18 +27,19 @@ const SERVER_DOWN = "Can't reach the pairing server. Check your internet connect
 const OFFLINE = "You appear to be offline. Connect to Wi-Fi, then try again.";
 const LINK_FAILED = "Couldn't connect directly to the other laptop. Both must be on the same Wi-Fi network. Guest and public networks often block device-to-device traffic.";
 
-let ws = null, state = 'idle';            // idle | waiting | joining | paired
+let ws = null, state = 'idle';         
 let role = null, pc = null, dc = null, connectTimer = null;
 let signalQueue = Promise.resolve();
 let sending = false, incoming = null, downloadUrls = [];
-let selectedFiles = []; // files chosen on the sender, editable before sending
-let lastAction = 'send'; // which control the user last used, so focus can return to it
+let selectedFiles = []; 
+let lastAction = 'send'; 
 let offer = null, cancelledBy = null, replyResolver = null, replyTimer = null;
 const REPLY_TIMEOUT_MS = 60000;
 
 function setStatus(msg, isError = false) {
   statusEl.textContent = msg;
   statusEl.classList.toggle('error', isError);
+  statusEl.classList.remove('pop'); void statusEl.offsetWidth; statusEl.classList.add('pop'); ]
   statusEl.setAttribute('aria-live', isError ? 'assertive' : 'polite');
 }
 const fmtSize = (n) => n < 1024 * 1024 ? `${Math.max(1, Math.round(n / 1024))} KB` : `${(n / 1048576).toFixed(1)} MB`;
@@ -75,14 +74,12 @@ function reset(msg, isError) {
   closeRtc();
   setState('idle');
   setStatus(msg, isError);
-  // Keep keyboard users oriented: if focus was on something that just got hidden or disabled, move it.
   const a = document.activeElement;
   if (!a || a === document.body || a.disabled || a.offsetParent === null) {
     (lastAction === 'join' ? codeInput : sendBtn).focus();
   }
 }
 
-// ---------- pairing (WebSocket) ----------
 function connect() {
   return new Promise((resolve, reject) => {
     const proto = location.protocol === 'https:' ? 'wss' : 'ws';
@@ -102,7 +99,7 @@ async function open(firstMessage) {
   ws.onmessage = (e) => { let m; try { m = JSON.parse(e.data); } catch { return; } handle(m); };
   ws.onclose = () => {
     if (state === 'idle') return;
-    if (dc && dc.readyState === 'open') return; // transfer does not need the server anymore
+    if (dc && dc.readyState === 'open') return; 
     reset('Lost the connection to the pairing server. Start again.', true);
   };
   ws.send(JSON.stringify(firstMessage));
@@ -145,7 +142,6 @@ function handle(msg) {
   }
 }
 
-// ---------- direct connection (WebRTC) ----------
 const sendSignal = (data) => { if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'signal', data })); };
 
 function linkFailed() {
@@ -153,7 +149,6 @@ function linkFailed() {
 }
 
 function startRtc() {
-  // No STUN/TURN servers: traffic stays on the local network.
   pc = new RTCPeerConnection({ iceServers: [] });
   pc.onicecandidate = (e) => { if (e.candidate) sendSignal({ candidate: e.candidate }); };
   pc.onconnectionstatechange = () => {
@@ -183,7 +178,7 @@ async function onSignal(data) {
       sendSignal({ sdp: pc.localDescription });
     }
   } else if (data.candidate) {
-    try { await pc.addIceCandidate(data.candidate); } catch { /* late or duplicate candidate */ }
+    try { await pc.addIceCandidate(data.candidate); } catch {  }
   }
 }
 
@@ -209,7 +204,6 @@ function setupChannel(ch) {
   };
 }
 
-// ---------- file transfer ----------
 function failTransfer(msg) {
   incoming = null; offer = null; sending = false; sendFileBtn.disabled = false; lockSelection(false);
   offerBox.hidden = true; cancelTransferBtn.hidden = true; progress.hidden = true;
@@ -234,10 +228,9 @@ function addDownloadLink(f, url) {
 }
 
 function safeSend(obj) {
-  try { if (dc && dc.readyState === 'open') dc.send(JSON.stringify(obj)); } catch { /* channel closing */ }
+  try { if (dc && dc.readyState === 'open') dc.send(JSON.stringify(obj)); } catch {  }
 }
 
-// The sender waits here for the receiver's accept, reject or cancel.
 function waitForReply(ms) {
   return new Promise((resolve) => {
     replyResolver = resolve;
@@ -268,7 +261,7 @@ function drain(limit) {
 }
 
 async function sendFile() {
-  if (sending) return; // ignore double clicks
+  if (sending) return; 
   const chosen = [...selectedFiles];
   if (!chosen.length) { setStatus('Choose at least one file first.', true); fileInput.focus(); return; }
   const empty = chosen.find((f) => !f.isFolder && f.size === 0);
@@ -446,7 +439,6 @@ function onData(e) {
   }
 }
 
-// ---------- file selection (sender) ----------
 function renderSelection() {
   selectionList.replaceChildren();
   selectedFiles.forEach((f, i) => {
@@ -473,14 +465,13 @@ function renderSelection() {
   clearBtn.hidden = selectedFiles.length < 2;
 }
 
-function lockSelection(locked) { // no edits while a transfer is running
-  fileInput.disabled = locked; folderInput.disabled = locked; clearBtn.disabled = locked;
+function lockSelection(locked) { 
+  fileInput.disabled = locked; folderInput.disabled = locked; includeEnv.disabled = locked; clearBtn.disabled = locked;
   selectionList.querySelectorAll('button').forEach((b) => { b.disabled = locked; });
 }
 
-// ---------- controls ----------
 sendBtn.addEventListener('click', () => {
-  if (state !== 'idle') return; // ignore double clicks
+  if (state !== 'idle') return; 
   lastAction = 'send';
   setState('waiting'); codeBox.hidden = true;
   setStatus('Getting a code...');
@@ -541,7 +532,7 @@ fileInput.addEventListener('change', () => {
     if (have.has(key(f))) skipped++;
     else { have.add(key(f)); selectedFiles.push(f); }
   }
-  fileInput.value = ''; // lets the same file be picked again after removing it
+  fileInput.value = ''; 
   renderSelection();
   setStatus(skipped
     ? `Skipped ${skipped} file${skipped === 1 ? '' : 's'} already in the list.`
@@ -550,9 +541,9 @@ fileInput.addEventListener('change', () => {
 
 folderInput.addEventListener('change', () => {
   const list = [...folderInput.files];
-  folderInput.value = ''; // lets the same folder be picked again later
+  folderInput.value = ''; 
   if (typeof DropFolder === 'undefined') { setStatus("Folder support didn't load. Reload the page and try again.", true); return; }
-  const r = DropFolder.filterFolder(list);
+  const r = DropFolder.filterFolder(list, { includeEnv: includeEnv.checked });
   if (r.error) { setStatus(r.error, true); return; }
   const e = r.entry;
   if (selectedFiles.some((f) => f.isFolder && f.name === e.name && f.count === e.count && f.size === e.size)) {
@@ -563,6 +554,20 @@ folderInput.addEventListener('change', () => {
   setStatus(`Added folder ${e.displayName}: ${e.count} file${e.count === 1 ? '' : 's'}, ${fmtSize(e.size)}, sent as ${e.name}.${e.skippedNote ? ` ${e.skippedNote}.` : ''}`);
 });
 
+includeEnv.addEventListener('change', () => {
+  if (typeof DropFolder === 'undefined') return;
+  let failed = null;
+  selectedFiles = selectedFiles.map((f) => {
+    if (!f.isFolder) return f;
+    const r = DropFolder.filterFolder(f.source, { includeEnv: includeEnv.checked });
+    if (r.error) { failed = r.error; return f; }
+    return r.entry;
+  });
+  renderSelection();
+  if (failed) setStatus(failed, true);
+  else setStatus(includeEnv.checked ? '.env files will be included in folders.' : '.env files will be skipped in folders.');
+});
+
 selectionList.addEventListener('click', (e) => {
   const btn = e.target.closest('button');
   if (!btn || sending) return;
@@ -571,7 +576,7 @@ selectionList.addEventListener('click', (e) => {
   renderSelection();
   setStatus(`Removed ${removed.name}. ${selectedFiles.length ? `${selectedFiles.length} left.` : 'No files selected.'}`);
   const btns = selectionList.querySelectorAll('button');
-  (btns[i] || btns[i - 1] || fileInput).focus(); // keep keyboard focus in the list
+  (btns[i] || btns[i - 1] || fileInput).focus();
 });
 
 clearBtn.addEventListener('click', () => {
@@ -591,3 +596,19 @@ if (typeof RTCPeerConnection === 'undefined' || typeof WebSocket === 'undefined'
   sendBtn.disabled = true; recvBtn.disabled = true; codeInput.disabled = true;
   setStatus("This browser can't send files directly. Use a current version of Chrome, Edge, Firefox or Safari.", true);
 }
+
+const themeBtn = $('theme-btn');
+const currentTheme = () => document.documentElement.getAttribute('data-theme')
+  || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+function syncThemeBtn() {
+  const dark = currentTheme() === 'dark';
+  themeBtn.textContent = dark ? 'Light mode' : 'Dark mode';
+  themeBtn.setAttribute('aria-label', `Switch to ${dark ? 'light' : 'dark'} mode`);
+}
+themeBtn.addEventListener('click', () => {
+  const next = currentTheme() === 'dark' ? 'light' : 'dark';
+  document.documentElement.setAttribute('data-theme', next);
+  try { localStorage.setItem('droplink-theme', next); } catch {  }
+  syncThemeBtn();
+});
+syncThemeBtn();

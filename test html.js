@@ -1,4 +1,3 @@
-// Static keyboard/accessibility checks on public/index.html. Run: npm run test:html
 const fs = require('fs');
 const html = fs.readFileSync('public/index.html', 'utf8');
 let failed = false;

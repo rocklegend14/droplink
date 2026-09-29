@@ -1,5 +1,3 @@
-// Run: PORT=3100 CODE_TTL_MS=800 node server.js   (in one terminal)
-//      npm test                                    (in another)
 const WebSocket = require('ws');
 const url = 'ws://localhost:3100/ws';
 const open = () => new Promise(r => { const w = new WebSocket(url); w.q = []; w.on('message', m => { const d = JSON.parse(m); w.q.push(d); w.emit('msg', d); }); w.on('open', () => r(w)); });
