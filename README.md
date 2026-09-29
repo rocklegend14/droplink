@@ -3,7 +3,7 @@
 Send files and code folders from one laptop to another over the same Wi-Fi, straight from the browser. No account, no install, no cloud upload.
 
 **Modeled on:** Windows Nearby Sharing (the "send a file to a nearby device" feature).
-**Demo:** (https://droplink-rl1f.onrender.com/) · 
+**Demo:** https://droplink-rl1f.onrender.com/
 
 ## The problem
 Moving files between two laptops you own is harder than it should be, especially on Windows:
