@@ -35,13 +35,13 @@ _(Update as features land.)_
 - [x] Progress bar, cancel from either side, retry ("Try again"), receiver accepts or rejects
 - [x] Clear failure messages (each says what happened and what to do)
 - [x] Full keyboard use
-- [ ] Multiple files
+- [x] Multiple files in one batch (up to 50 files, 500 MB in total), one accept for the batch, a save link per file. Files can be added in several picks, removed one by one, or cleared all at once before sending
 - [ ] Folder transfer (zipped, skipping `node_modules`, `.git`)
 
 ## How it works
 1. The sender gets a 6-digit code from the pairing server and the receiver enters it.
 2. The server relays only the WebRTC handshake. The browsers then open a direct data channel with no STUN or TURN servers, so it only connects on the same local network.
-3. The file is cut into 16 KB chunks, sent with backpressure, and reassembled on the receiver, which checks the size before offering the download.
+3. The receiver accepts or rejects the whole batch once. Files are then sent one after another in 16 KB chunks with backpressure, and the receiver checks every file's size before offering a save link for it.
 
 ## Keyboard use
 The whole flow works without a mouse.
@@ -70,7 +70,7 @@ Every message says what went wrong and what to try next.
 | Other laptop closes its page | Says it disconnected and to start again |
 | Connection lost mid-transfer | Says how far it got and to pair again |
 | Receiver rejects, cancels, or doesn't answer in 60 s | Sender is told which, with a "Try again" button |
-| File empty, or over 500 MB | Refused before sending, with the reason |
+| Empty file, over 500 MB in total, or more than 50 files | Refused before sending, with the reason |
 | File incomplete on arrival | Receiver told to ask for a resend |
 | File can't be read (moved, locked) | Says so, and to choose it again |
 | Browser runs out of memory | Says to close tabs or use a smaller file |

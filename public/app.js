@@ -6,12 +6,13 @@ const statusEl = $('status'), sendBtn = $('send-btn'), recvBtn = $('recv-btn'),
   cancelBtn = $('cancel-btn'), codeInput = $('code'), codeBox = $('code-box'), codeOut = $('code-out'),
   transfer = $('transfer'), sendPanel = $('send-panel'), recvPanel = $('recv-panel'),
   fileInput = $('file-input'), sendFileBtn = $('send-file-btn'), progress = $('progress'),
-  download = $('download'), leaveBtn = $('leave-btn'),
+  downloads = $('downloads'), leaveBtn = $('leave-btn'), selection = $('selection'), selectionList = $('selection-list'), clearBtn = $('clear-btn'),
   offerBox = $('offer'), offerText = $('offer-text'), acceptBtn = $('accept-btn'),
   rejectBtn = $('reject-btn'), cancelTransferBtn = $('cancel-transfer-btn');
 
 const CHUNK = 16 * 1024;              // bytes per message (safe for every browser)
-const MAX_BYTES = 500 * 1024 * 1024;  // file size limit
+const MAX_BYTES = 500 * 1024 * 1024;  // limit for all files in one batch (they are held in memory)
+const MAX_FILES = 50;
 const HIGH_WATER = 4 * 1024 * 1024;   // pause sending when this much is queued
 const CONNECT_TIMEOUT_MS = 15000;
 
@@ -31,7 +32,8 @@ const LINK_FAILED = "Couldn't connect directly to the other laptop. Both must be
 let ws = null, state = 'idle';            // idle | waiting | joining | paired
 let role = null, pc = null, dc = null, connectTimer = null;
 let signalQueue = Promise.resolve();
-let sending = false, incoming = null, downloadUrl = null;
+let sending = false, incoming = null, downloadUrls = [];
+let selectedFiles = []; // files chosen on the sender, editable before sending
 let lastAction = 'send'; // which control the user last used, so focus can return to it
 let offer = null, cancelledBy = null, replyResolver = null, replyTimer = null;
 const REPLY_TIMEOUT_MS = 60000;
@@ -63,10 +65,9 @@ function closeRtc() {
   if (pc) pc.close();
   dc = pc = null; incoming = null; sending = false; role = null;
   offer = null; cancelledBy = null; clearReply();
-  offerBox.hidden = true; cancelTransferBtn.hidden = true; sendFileBtn.textContent = 'Send file';
-  if (downloadUrl) { URL.revokeObjectURL(downloadUrl); downloadUrl = null; }
-  download.hidden = true; progress.hidden = true; progress.value = 0;
-  fileInput.value = ''; sendFileBtn.disabled = false;
+  offerBox.hidden = true; cancelTransferBtn.hidden = true; sendFileBtn.textContent = 'Send';
+  clearDownloads(); progress.hidden = true; progress.value = 0;
+  selectedFiles = []; renderSelection(); lockSelection(false); sendFileBtn.disabled = false;
 }
 
 function reset(msg, isError) {
@@ -202,7 +203,7 @@ function setupChannel(ch) {
   ch.onclose = () => {
     if (state !== 'paired') return;
     resolveReply('closed');
-    if (incoming) failTransfer(`Connection dropped at ${Math.round(incoming.received / incoming.size * 100)}%. Pair again to retry.`);
+    if (incoming) failTransfer(`Connection dropped at ${Math.round(incoming.totalReceived / incoming.total * 100)}%. Pair again to retry.`);
     else if (offer) failTransfer('Connection dropped before you answered. Pair again.');
     else if (!sending) setStatus('The direct connection closed.', true);
   };
@@ -210,10 +211,26 @@ function setupChannel(ch) {
 
 // ---------- file transfer ----------
 function failTransfer(msg) {
-  incoming = null; offer = null; sending = false; sendFileBtn.disabled = false;
+  incoming = null; offer = null; sending = false; sendFileBtn.disabled = false; lockSelection(false);
   offerBox.hidden = true; cancelTransferBtn.hidden = true; progress.hidden = true;
   if (role === 'sender') sendFileBtn.textContent = 'Try again';
   setStatus(msg, true);
+  (role === 'sender' ? sendFileBtn : $('transfer-h')).focus();
+}
+
+function clearDownloads() {
+  downloadUrls.forEach((u) => URL.revokeObjectURL(u));
+  downloadUrls = [];
+  downloads.replaceChildren();
+  downloads.hidden = true;
+}
+
+function addDownloadLink(f, url) {
+  const li = document.createElement('li');
+  const a = document.createElement('a');
+  a.href = url; a.download = f.name;
+  a.textContent = `Save ${f.name} (${fmtSize(f.size)})`;
+  li.appendChild(a); downloads.appendChild(li); downloads.hidden = false;
 }
 
 function safeSend(obj) {
@@ -252,25 +269,31 @@ function drain(limit) {
 
 async function sendFile() {
   if (sending) return; // ignore double clicks
-  const file = fileInput.files[0];
-  if (!file) { setStatus('Choose a file first.', true); fileInput.focus(); return; }
-  if (file.size === 0) { setStatus('That file is empty. Choose another.', true); return; }
-  if (file.size > MAX_BYTES) { setStatus(`That file is ${fmtSize(file.size)}. The limit is 500 MB.`, true); return; }
+  const files = [...selectedFiles];
+  if (!files.length) { setStatus('Choose at least one file first.', true); fileInput.focus(); return; }
+  const empty = files.find((f) => f.size === 0);
+  if (empty) { setStatus(`${empty.name} is empty. Remove it from your selection and try again.`, true); return; }
+  if (files.length > MAX_FILES) { setStatus(`You selected ${files.length} files. The limit is ${MAX_FILES} per batch.`, true); return; }
+  const total = files.reduce((n, f) => n + f.size, 0);
+  if (total > MAX_BYTES) { setStatus(`These files add up to ${fmtSize(total)}. The limit is 500 MB in total. Send them in smaller batches.`, true); return; }
   if (!dc || dc.readyState !== 'open') { setStatus('Not connected directly yet. Wait a moment or pair again.', true); return; }
 
   sending = true; cancelledBy = null;
-  sendFileBtn.disabled = true; sendFileBtn.textContent = 'Send file';
+  sendFileBtn.disabled = true; sendFileBtn.textContent = 'Send';
   cancelTransferBtn.hidden = false; progress.hidden = true;
-  let offset = 0;
+  lockSelection(true);
+  $('transfer-h').focus();
+  let sent = 0;
+  const label = files.length === 1 ? files[0].name : `${files.length} files`;
   const cancelMsg = () => (cancelledBy === 'me'
     ? 'You cancelled the transfer. Choose "Try again" to send it again.'
     : 'The other laptop cancelled the transfer. Choose "Try again" to send it again.');
   try {
-    dc.send(JSON.stringify({ type: 'meta', name: file.name, size: file.size, mime: file.type }));
-    setStatus(`Waiting for the other laptop to accept ${file.name}...`);
+    dc.send(JSON.stringify({ type: 'meta', files: files.map((f) => ({ name: f.name, size: f.size, mime: f.type })) }));
+    setStatus(`Waiting for the other laptop to accept ${label}...`);
     const reply = await waitForReply(REPLY_TIMEOUT_MS);
     if (cancelledBy) return failTransfer(cancelMsg());
-    if (reply === 'reject') return failTransfer('The other laptop rejected the file. Choose "Try again" to send it again.');
+    if (reply === 'reject') return failTransfer('The other laptop rejected the files. Choose "Try again" to send them again.');
     if (reply === 'timeout') {
       safeSend({ type: 'cancel' });
       return failTransfer('No answer after 60 seconds. Ask the other laptop to look for the Accept button, then try again.');
@@ -278,42 +301,66 @@ async function sendFile() {
     if (reply !== 'accept') throw new Error('closed');
 
     showProgress(0);
-    setStatus(`Sending ${file.name} (${fmtSize(file.size)})...`);
-    while (offset < file.size) {
-      if (cancelledBy) return failTransfer(cancelMsg());
-      if (dc.bufferedAmount > HIGH_WATER) await drain(HIGH_WATER / 2);
-      let buf;
-      try { buf = await file.slice(offset, offset + CHUNK).arrayBuffer(); }
-      catch {
-        safeSend({ type: 'cancel' });
-        return failTransfer(`Couldn't read ${file.name}. It may have been moved, deleted or locked by another program. Choose it again, then try again.`);
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      dc.send(JSON.stringify({ type: 'file-start', index: i }));
+      setStatus(files.length === 1
+        ? `Sending ${file.name} (${fmtSize(file.size)})...`
+        : `Sending file ${i + 1} of ${files.length}: ${file.name}`);
+      let offset = 0;
+      while (offset < file.size) {
+        if (cancelledBy) return failTransfer(cancelMsg());
+        if (dc.bufferedAmount > HIGH_WATER) await drain(HIGH_WATER / 2);
+        let buf;
+        try { buf = await file.slice(offset, offset + CHUNK).arrayBuffer(); }
+        catch {
+          safeSend({ type: 'cancel' });
+          return failTransfer(`Couldn't read ${file.name}. It may have been moved, deleted or locked by another program. Choose the files again, then try again.`);
+        }
+        dc.send(buf);
+        offset += buf.byteLength; sent += buf.byteLength;
+        showProgress(sent / total * 100);
       }
-      dc.send(buf);
-      offset += buf.byteLength;
-      showProgress(offset / file.size * 100);
+      dc.send(JSON.stringify({ type: 'file-end' }));
     }
     dc.send(JSON.stringify({ type: 'done' }));
     await drain(0);
     if (cancelledBy) return failTransfer(cancelMsg());
     sending = false; sendFileBtn.disabled = false; cancelTransferBtn.hidden = true;
-    setStatus(`Sent ${file.name} (${fmtSize(file.size)}). Choose another file to send more.`);
+    selectedFiles = []; renderSelection(); lockSelection(false);
+    setStatus(files.length === 1
+      ? `Sent ${files[0].name} (${fmtSize(total)}). Choose more files to send another batch.`
+      : `Sent ${files.length} files (${fmtSize(total)}). Choose more files to send another batch.`);
+    fileInput.focus();
   } catch {
-    failTransfer(`Connection dropped at ${Math.round(offset / file.size * 100)}%. Pair again to retry.`);
+    failTransfer(`Connection dropped at ${Math.round(sent / total * 100)}%. Pair again to retry.`);
   }
 }
 
 function onOffer(m) {
   if (role !== 'receiver') return;
   if (incoming || offer) return safeSend({ type: 'reject' }); // already busy
-  if (!Number.isFinite(m.size) || m.size <= 0 || m.size > MAX_BYTES) {
+  const files = (Array.isArray(m.files) ? m.files : []).map((f) => ({
+    name: String((f && f.name) || 'file').slice(0, 255),
+    size: Number(f && f.size),
+    mime: String((f && f.mime) || 'application/octet-stream'),
+  }));
+  const total = files.reduce((n, f) => n + f.size, 0);
+  const valid = files.length >= 1 && files.length <= MAX_FILES && total <= MAX_BYTES
+    && files.every((f) => Number.isFinite(f.size) && f.size > 0);
+  if (!valid) {
     safeSend({ type: 'reject' });
-    return failTransfer('The sender offered a file over the 500 MB limit. It was rejected automatically.');
+    return failTransfer('The sender offered more than the limit (500 MB in total, 50 files). It was rejected automatically.');
   }
-  offer = { name: String(m.name || 'file'), size: m.size, mime: m.mime || 'application/octet-stream' };
-  download.hidden = true; progress.hidden = true;
-  offerText.textContent = `Incoming file: ${offer.name} (${fmtSize(offer.size)})`;
+  offer = { files, total };
+  progress.hidden = true;
+  const names = files.slice(0, 3).map((f) => f.name).join(', ') + (files.length > 3 ? `, and ${files.length - 3} more` : '');
+  offerText.textContent = (files.length === 1
+    ? `Incoming file: ${files[0].name} (${fmtSize(total)})`
+    : `Incoming: ${files.length} files (${fmtSize(total)}): ${names}`)
+    + (downloadUrls.length ? '. Accepting replaces the files you received earlier.' : '');
   offerBox.hidden = false;
-  setStatus(`The other laptop wants to send you ${offer.name}. Accept or reject it.`);
+  setStatus(`The other laptop wants to send you ${files.length === 1 ? files[0].name : `${files.length} files`}. Accept or reject.`);
   acceptBtn.focus();
 }
 
@@ -329,35 +376,78 @@ function onData(e) {
       else if (incoming || offer) failTransfer('The sender cancelled the transfer.');
       return;
     }
-    if (m.type === 'done' && incoming) {
-      if (incoming.received !== incoming.size) {
-        return failTransfer('The file arrived incomplete. Ask the sender to try again.');
+    if (!incoming) return;
+
+    if (m.type === 'file-start') {
+      if (m.index !== incoming.results.length || incoming.current) {
+        safeSend({ type: 'cancel' });
+        return failTransfer('Files arrived out of order. Ask the sender to try again.');
       }
-      if (downloadUrl) URL.revokeObjectURL(downloadUrl);
-      try { downloadUrl = URL.createObjectURL(new Blob(incoming.chunks, { type: incoming.mime })); }
-      catch { return failTransfer('Your browser ran out of memory while saving the file. Close other tabs or ask for a smaller file.'); }
-      download.href = downloadUrl;
-      download.download = incoming.name;
-      download.textContent = `Save ${incoming.name} (${fmtSize(incoming.size)})`;
-      download.hidden = false;
+      incoming.current = { received: 0, chunks: [] };
+      const f = incoming.files[m.index], n = incoming.files.length;
+      if (n > 1) setStatus(`Receiving file ${m.index + 1} of ${n}: ${f.name}`);
+      return;
+    }
+    if (m.type === 'file-end') {
+      const f = incoming.files[incoming.results.length], c = incoming.current;
+      if (!f || !c || c.received !== f.size) {
+        return failTransfer(`${f ? f.name : 'A file'} arrived incomplete. Ask the sender to try again.`);
+      }
+      let url;
+      try { url = URL.createObjectURL(new Blob(c.chunks, { type: f.mime })); }
+      catch { return failTransfer('Your browser ran out of memory while saving the file. Close other tabs or ask for fewer files.'); }
+      downloadUrls.push(url);
+      addDownloadLink(f, url);
+      incoming.results.push(url); incoming.current = null;
+      return;
+    }
+    if (m.type === 'done') {
+      const n = incoming.files.length;
+      if (incoming.results.length !== n) return failTransfer('Some files did not arrive. Ask the sender to try again.');
       cancelTransferBtn.hidden = true;
-      setStatus('File received. Use the link below to save it.');
-      download.focus();
+      setStatus(n === 1 ? 'File received. Use the link below to save it.' : `${n} files received. Use the links below to save each one.`);
+      downloads.querySelector('a').focus();
       incoming = null;
     }
-  } else if (incoming) {
-    try { incoming.chunks.push(e.data); }
+  } else if (incoming && incoming.current) {
+    const c = incoming.current, f = incoming.files[incoming.results.length];
+    try { c.chunks.push(e.data); }
     catch {
       safeSend({ type: 'cancel' });
-      return failTransfer('Your browser ran out of memory while receiving. Close other tabs or ask for a smaller file.');
+      return failTransfer('Your browser ran out of memory while receiving. Close other tabs or ask for fewer files.');
     }
-    incoming.received += e.data.byteLength;
-    if (incoming.received > incoming.size) {
+    c.received += e.data.byteLength; incoming.totalReceived += e.data.byteLength;
+    if (!f || c.received > f.size) {
       safeSend({ type: 'cancel' });
       return failTransfer('Received more data than expected. Ask the sender to try again.');
     }
-    showProgress(incoming.received / incoming.size * 100);
+    showProgress(incoming.totalReceived / incoming.total * 100);
   }
+}
+
+// ---------- file selection (sender) ----------
+function renderSelection() {
+  selectionList.replaceChildren();
+  selectedFiles.forEach((f, i) => {
+    const li = document.createElement('li');
+    const label = document.createElement('span');
+    label.textContent = `${f.name} (${fmtSize(f.size)})`;
+    const btn = document.createElement('button');
+    btn.type = 'button'; btn.className = 'secondary small'; btn.dataset.index = i;
+    btn.textContent = 'Remove'; btn.setAttribute('aria-label', `Remove ${f.name}`);
+    li.append(label, btn);
+    selectionList.appendChild(li);
+  });
+  const total = selectedFiles.reduce((n, f) => n + f.size, 0);
+  selection.textContent = selectedFiles.length
+    ? `${selectedFiles.length} file${selectedFiles.length === 1 ? '' : 's'} selected, ${fmtSize(total)} in total`
+    : '';
+  clearBtn.hidden = selectedFiles.length < 2;
+}
+
+function lockSelection(locked) { // no edits while a transfer is running
+  fileInput.disabled = locked; clearBtn.disabled = locked;
+  selectionList.querySelectorAll('button').forEach((b) => { b.disabled = locked; });
 }
 
 // ---------- controls ----------
@@ -398,21 +488,56 @@ document.addEventListener('keydown', (e) => {
 
 acceptBtn.addEventListener('click', () => {
   if (!offer) return;
-  incoming = { ...offer, chunks: [], received: 0 };
+  incoming = { files: offer.files, total: offer.total, results: [], current: null, totalReceived: 0 };
   offer = null; offerBox.hidden = true; cancelTransferBtn.hidden = false;
-  showProgress(0);
-  setStatus(`Receiving ${incoming.name} (${fmtSize(incoming.size)})...`);
+  clearDownloads(); showProgress(0);
+  setStatus(`Receiving ${incoming.files.length === 1 ? incoming.files[0].name : `${incoming.files.length} files`} (${fmtSize(incoming.total)})...`);
+  $('transfer-h').focus();
   safeSend({ type: 'accept' });
 });
 rejectBtn.addEventListener('click', () => {
   if (!offer) return;
   offer = null; offerBox.hidden = true;
   safeSend({ type: 'reject' });
-  setStatus('You rejected the file. The sender has been told.');
+  setStatus('You rejected the files. The sender has been told.');
+  $('transfer-h').focus();
 });
 cancelTransferBtn.addEventListener('click', cancelTransfer);
 
 sendFileBtn.addEventListener('click', sendFile);
+fileInput.addEventListener('change', () => {
+  const key = (f) => `${f.name}|${f.size}|${f.lastModified}`;
+  const have = new Set(selectedFiles.map(key));
+  let skipped = 0;
+  for (const f of fileInput.files) {
+    if (have.has(key(f))) skipped++;
+    else { have.add(key(f)); selectedFiles.push(f); }
+  }
+  fileInput.value = ''; // lets the same file be picked again after removing it
+  renderSelection();
+  setStatus(skipped
+    ? `Skipped ${skipped} file${skipped === 1 ? '' : 's'} already in the list.`
+    : `${selectedFiles.length} file${selectedFiles.length === 1 ? '' : 's'} ready to send.`);
+});
+
+selectionList.addEventListener('click', (e) => {
+  const btn = e.target.closest('button');
+  if (!btn || sending) return;
+  const i = Number(btn.dataset.index);
+  const [removed] = selectedFiles.splice(i, 1);
+  renderSelection();
+  setStatus(`Removed ${removed.name}. ${selectedFiles.length ? `${selectedFiles.length} left.` : 'No files selected.'}`);
+  const btns = selectionList.querySelectorAll('button');
+  (btns[i] || btns[i - 1] || fileInput).focus(); // keep keyboard focus in the list
+});
+
+clearBtn.addEventListener('click', () => {
+  if (sending) return;
+  selectedFiles = []; renderSelection();
+  setStatus('Selection cleared.');
+  fileInput.focus();
+});
+
 leaveBtn.addEventListener('click', () => {
   if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'leave' }));
   reset('Disconnected.');

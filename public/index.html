@@ -38,18 +38,20 @@
     <section id="transfer" aria-labelledby="transfer-h" hidden>
       <h2 id="transfer-h" tabindex="-1">Transfer</h2>
       <div id="send-panel" hidden>
-        <label for="file-input">Choose a file to send (up to 500 MB)</label>
-        <input type="file" id="file-input" class="file">
-        <button type="button" id="send-file-btn">Send file</button>
+        <label for="file-input">Choose files to send (add more any time, up to 50 files and 500 MB in total)</label>
+        <input type="file" id="file-input" class="file" multiple>
+        <ul id="selection-list" class="selection-list" aria-label="Selected files"></ul>
+        <div class="selection-row"><span id="selection"></span> <button type="button" id="clear-btn" class="secondary small" hidden>Clear all</button></div>
+        <button type="button" id="send-file-btn">Send</button>
       </div>
-      <p id="recv-panel" hidden>The file will appear here when the sender starts.</p>
+      <p id="recv-panel" hidden>Files will appear here when the sender starts.</p>
       <div id="offer" hidden>
         <p id="offer-text"></p>
         <button type="button" id="accept-btn">Accept</button>
         <button type="button" id="reject-btn" class="secondary" aria-keyshortcuts="Escape">Reject (Esc)</button>
       </div>
       <progress id="progress" max="100" value="0" hidden aria-label="Transfer progress"></progress>
-      <p><a id="download" hidden></a></p>
+      <ul id="downloads" class="downloads" hidden></ul>
       <button type="button" id="cancel-transfer-btn" class="secondary" aria-keyshortcuts="Escape" hidden>Cancel transfer (Esc)</button>
       <button type="button" id="leave-btn" class="secondary">Disconnect</button>
     </section>

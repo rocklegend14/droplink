@@ -39,8 +39,15 @@ button.secondary { background: transparent; color: var(--accent); }
 
 .file { width: 100%; letter-spacing: 0; margin: .25rem 0 .5rem; }
 progress { width: 100%; margin: .75rem 0 .25rem; }
-#download { font-weight: 600; color: var(--accent); }
+#downloads { padding-left: 1.25rem; margin: .5rem 0 1rem; }
+#downloads a { font-weight: 600; color: var(--accent); }
+#selection { color: var(--muted); margin: 0 0 .5rem; }
 
 #transfer button + button { margin-left: .5rem; }
 #offer { border: 1px solid var(--line); border-radius: 4px; padding: .75rem 1rem; margin: .75rem 0; }
 #offer p { margin: 0 0 .5rem; font-weight: 600; }
+
+.selection-list { list-style: none; padding: 0; margin: .5rem 0 0; }
+.selection-list li { display: flex; justify-content: space-between; align-items: center; gap: .75rem; padding: .35rem 0; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
+.selection-row { margin: .35rem 0 .75rem; display: flex; align-items: center; gap: .75rem; }
+button.small { padding: .2rem .7rem; font-size: .9rem; }
